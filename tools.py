@@ -1,6 +1,5 @@
 from langchain_core.tools import tool
 
-
 FLIGHTS_DB = {
     ("Hà Nội", "Đà Nẵng"): [
         {"airline": "Vietnam Airlines", "departure": "06:00", "arrival": "07:20", "price": 1_450_000, "class": "economy"},
@@ -48,88 +47,159 @@ HOTELS_DB = {
         {"name": "Liberty Central", "stars": 4, "price_per_night": 1_400_000, "area": "Quận 1", "rating": 4.1},
         {"name": "Cochin Zen Hotel", "stars": 3, "price_per_night": 550_000, "area": "Quận 3", "rating": 4.4},
         {"name": "The Common Room", "stars": 2, "price_per_night": 180_000, "area": "Quận 1", "rating": 4.6},
-    ]
+    ],
 }
-
-def format_vnd(amount: int) -> str:
-    return f"{amount:,.0f}đ".replace(",", ".")
 
 @tool
 def search_flights(origin: str, destination: str) -> str:
-    # Tra cứu chiều đi
-    #is_weekend: true nếu là cuối tuần
+    '''
+    Tìm kiếm các chuyến bay giữa hai thành phố
+    Tham số:
+    - origin: thành phố khởi hành (ví dụ: 'Hà Nội', 'Hồ Chí Minh')
+    - destination: thành phố đến (ví dụ: 'Đà Nẵng', 'Phú Quốc')
+    Trả về danh sách chuyến bay với hãng, giờ bay và giá vé.
+    Nếu không tìm thấy chuyến bay, trả về dòng thông báo không có chuyến
+    '''
+
     flights = FLIGHTS_DB.get((origin, destination))
     
-    # Thử tra cứu ngược lại nếu không thấy
     if not flights:
-        flights = FLIGHTS_DB.get((destination, origin))
+        return f"Không tìm thấy chuyến bay nào từ {origin} đến {destination}."
+    
+    # Định dạng kết quả nếu tìm thấy
+    result_lines = [f"Các chuyến bay từ {origin} đến {destination}:"]
+    
+    for flight in flights:
+        airline = flight["airline"]
+        departure = flight["departure"]
+        arrival = flight["arrival"]
+        flight_class = flight["class"]
         
-    if not flights:
-        return f"Không tìm thấy chuyến bay từ {origin} đến {destination}."
-
-    result = [f"Danh sách chuyến bay giữa {origin} và {destination}:"]
-    for f in flights:
-        price_str = format_vnd(f['price'])
-        result.append(f"- {f['airline']} ({f['class']}): {f['departure']} -> {f['arrival']} | Giá: {price_str}")
+        # Format giá tiền: dùng dấu phẩy phân cách hàng nghìn rồi đổi thành dấu chấm
+        formatted_price = f"{flight['price']:,}".replace(",", ".") + " VNĐ"
         
-    return "\n".join(result)
+        # Tạo chuỗi thông tin cho từng chuyến bay
+        flight_info = f"- {airline}: {departure} -> {arrival} | Giá: {formatted_price} (Hạng: {flight_class})"
+        result_lines.append(flight_info)
+        
+    return "\n".join(result_lines)
 
 @tool
-def search_hotels(city: str, max_price_per_night: int = 999999999) -> str:
-    hotels = HOTELS_DB.get(city)
-    if not hotels:
-        return f"Không tìm thấy dữ liệu khách sạn nào tại {city}."
-
-    # Lọc khách sạn theo ngân sách
-    filtered_hotels = [h for h in hotels if h["price_per_night"] <= max_price_per_night]
-
+def search_hotels(city: str, max_price_per_night: int = 99999999) -> str:
+    """
+    Tìm khách sạn tại một thành phố, có thể lọc theo giá tối đa mỗi đêm.
+    Tham số:
+    - city: Tên thành phố (ví dụ: 'Hà Nội', 'Đà Nẵng')
+    - max_price_per_night: giá tối đa mỗi đêm (VNĐ)
+    Trả về danh sách khách sạn phù hợp, với tên, số sao, giá, khu vực, rating
+    """
+    # Tra cứu danh sách khách sạn theo thành phố
+    city_hotels = HOTELS_DB.get(city)
+    
+    # Trường hợp thành phố không tồn tại trong database
+    if not city_hotels:
+        return f"Không tìm thấy thông tin khách sạn nào tại {city}."
+        
+    # Lọc khách sạn theo max_price_per_night
+    filtered_hotels = [hotel for hotel in city_hotels if hotel["price_per_night"] <= max_price_per_night]
+    
+    # Xử lý trường hợp có thành phố nhưng không có khách sạn nào thỏa mãn mức giá
     if not filtered_hotels:
-        return f"Không tìm thấy khách sạn tại {city} với giá dưới {format_vnd(max_price_per_night)}/đêm. Hãy thử tăng ngân sách."
-
-    # Sắp xếp theo rating giảm dần
+        formatted_max_price = f"{max_price_per_night:,}".replace(",", ".")
+        return f"Không tìm thấy khách sạn nào tại {city} với giá dưới {formatted_max_price} VNĐ. Hãy thử tăng ngân sách của bạn!"
+        
+    # Sắp xếp danh sách đã lọc theo rating giảm dần (reverse=True)
     filtered_hotels.sort(key=lambda x: x["rating"], reverse=True)
+    
+    # Định dạng kết quả đầu ra
+    result_lines = [f"Các khách sạn phù hợp tại {city} (Sắp xếp theo rating):"]
+    
+    for hotel in filtered_hotels:
+        name = hotel["name"]
+        stars = "⭐" * hotel["stars"] # Hiển thị số sao bằng icon cho trực quan
+        rating = hotel["rating"]
+        area = hotel["area"]
+        
+        # Format giá tiền: dùng dấu phẩy phân cách hàng nghìn rồi đổi thành dấu chấm
+        formatted_price = f"{hotel['price_per_night']:,}".replace(",", ".") + " VNĐ"
+        
+        # Tạo chuỗi thông tin cho từng khách sạn
+        hotel_info = f"- {name} {stars} | Đánh giá: {rating}/5.0 | Khu vực: {area} | Giá: {formatted_price}/đêm"
+        result_lines.append(hotel_info)
+        
+    return "\n".join(result_lines)
 
-    result = [f"Danh sách khách sạn tại {city} (Ngân sách <= {format_vnd(max_price_per_night)}/đêm):"]
-    for h in filtered_hotels:
-        price_str = format_vnd(h['price_per_night'])
-        result.append(f"- {h['name']} ({h['stars']} sao) | Khu vực: {h['area']} | Rating: {h['rating']} | Giá: {price_str}/đêm")
-
-    return "\n".join(result)
 
 @tool
 def calculate_budget(total_budget: int, expenses: str) -> str:
+    """
+    Tính toán ngân sách còn lại sau khi trừ các khoản chi phí.
+    Tham số:
+    - total_budget: tổng ngân sách ban đầu (VNĐ)
+    - expenses: chuỗi mô tả các khoản chi, mỗi khoản cách nhau bởi dấu phẩy, 
+      định dạng 'tên_khoản:số_tiền' (VD: 'vé_máy_bay:890000,khách_sạn:650000')
+    Trả về bảng chi tiết các khoản chi và số tiền còn lại.
+    Nếu vượt ngân sách, cảnh báo rõ ràng số tiền thiếu.
+    """
+    
+    # Xử lý trường hợp chuỗi expenses rỗng
+    if not expenses.strip():
+        return "Không có khoản chi phí nào được ghi nhận."
+
     parsed_expenses = {}
-    total_expense = 0
+    total_cost = 0
 
-    # Xử lý chuỗi expenses và bắt lỗi format
-    if expenses.strip():
-        try:
-            items = expenses.split(',')
-            for item in items:
-                if not item.strip():
-                    continue
-                name, price_str = item.split(':')
-                price = int(price_str.strip())
-                parsed_expenses[name.strip()] = price
-                total_expense += price
-        except ValueError:
-            return "Lỗi: Đầu vào expenses sai định dạng. Vui lòng nhập đúng format 'tên_khoản:số_tiền,tên_khoản:số_tiền' (VD: vé_máy_bay:890000,khách_sạn:650000)."
-
-    remaining_budget = total_budget - total_expense
-
-    # Format bảng kết quả
-    result = ["Bảng chi phí:"]
-    for name, price in parsed_expenses.items():
-        result.append(f"- {name.replace('_', ' ').capitalize()}: {format_vnd(price)}")
+    # Parse chuỗi expenses thành dict
+    items = expenses.split(',')
+    for item in items:
+        # Xử lý lỗi: nếu expenses format sai
+        parts = item.split(':')
+        if len(parts) != 2:
+            return f"Lỗi định dạng: '{item.strip()}' không đúng cấu trúc 'tên_khoản:số_tiền'."
         
-    result.append("---")
-    result.append(f"Tổng chi: {format_vnd(total_expense)}")
-    result.append(f"Ngân sách: {format_vnd(total_budget)}")
-    result.append(f"Còn lại: {format_vnd(remaining_budget)}")
+        name, amount_str = parts
+        name = name.strip()
+        amount_str = amount_str.strip()
+        
+        try:
+            amount = int(amount_str)
+        except ValueError:
+            return f"Lỗi định dạng: Số tiền '{amount_str}' của khoản '{name}' không hợp lệ."
+        
+        # Làm đẹp tên khoản chi (VD: 'vé_máy_bay' -> 'Vé máy bay')
+        formatted_name = name.replace('_', ' ').capitalize()
+        parsed_expenses[formatted_name] = amount
+        total_cost += amount
 
-    # Nếu vượt ngân sách, thêm cảnh báo
-    if remaining_budget < 0:
-        result.append(f"\nCẢNH BÁO: Vượt ngân sách {format_vnd(abs(remaining_budget))}! Cần điều chỉnh.")
+    # Tính toán
+    remaining = total_budget - total_cost
 
-    return "\n".join(result)
+    # Hàm phụ để định dạng số tiền (VD: 1000000 -> 1.000.000đ)
+    def format_money(amount: int) -> str:
+        return f"{amount:,}".replace(",", ".") + "đ"
 
+    # Format bảng chi tiết
+    result_lines = ["Bảng chi phí:"]
+    for name, amount in parsed_expenses.items():
+        result_lines.append(f"  - {name}: {format_money(amount)}")
+        
+    result_lines.append("  ---")
+    result_lines.append(f"  Tổng chi: {format_money(total_cost)}")
+    result_lines.append(f"  Ngân sách: {format_money(total_budget)}")
+    
+    # Kiểm tra vượt ngân sách
+    if remaining >= 0:
+        result_lines.append(f"  Còn lại: {format_money(remaining)}")
+    else:
+        result_lines.append(f"  Còn lại: {format_money(remaining)}")
+        result_lines.append(f"Vượt ngân sách {format_money(abs(remaining))}! Cần điều chỉnh.")
+
+    return "\n".join(result_lines)
+
+# --- Code test thử ---
+# expenses_str = "vé_máy_bay:890000,khách_sạn:650000,ăn_uống:1500000"
+# print(calculate_budget(5000000, expenses_str))
+# print("="*40)
+# print(calculate_budget(2000000, expenses_str)) # Trường hợp bị âm tiền
+# print("="*40)
+# print(calculate_budget(5000000, "vé_máy_bay_890000")) # Trường hợp lỗi format
